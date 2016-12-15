@@ -10,6 +10,7 @@ using System.Net.Mail;
 using System.Net.Mime;
 using System.Timers;
 using System.IO;
+using System.Threading;
 
 namespace MQTTClient
 {
@@ -19,42 +20,76 @@ namespace MQTTClient
         static string smtpUser = "";
         static string smtpPass = "";
 
+        static bool ConnectToMQTT()
+        {
+            try
+            {
+                // create client instance 
+                client = new MqttClient("m13.cloudmqtt.com", 22183, true, null);
+
+                // register to message received 
+                client.MqttMsgPublishReceived += client_MqttMsgPublishReceived;
+                client.ConnectionClosed += Client_ConnectionClosed;
+
+                string clientId = Guid.NewGuid().ToString();
+
+                string[] lines = File.ReadAllLines("userpass.txt");
+                client.Connect(clientId, lines[0], lines[1]);
+
+                //SendEmail();
+
+                // subscribe to the topic "/home/temperature" with QoS 2 
+                client.Subscribe(new string[] { "iot/up" }, new byte[] { MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE });
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Error connecting to MQTT: " + e.Message);
+                Console.WriteLine(e.StackTrace);
+                return false;
+            }
+
+            Console.WriteLine("Successfully connected to MQTT");
+
+            return true;
+        }
+
         static void Main(string[] args)
         {
             string[] lines = File.ReadAllLines("smtpuserpass.txt");
             smtpUser = lines[0];
             smtpPass = lines[1];
 
-            // create client instance 
-            client = new MqttClient("m13.cloudmqtt.com", 22183, true, null);
+            while (!ConnectToMQTT())
+            {
+                Thread.Sleep(1000);
+            }
 
-            // register to message received 
-            client.MqttMsgPublishReceived += client_MqttMsgPublishReceived;
-
-            string clientId = Guid.NewGuid().ToString();
-
-            lines = File.ReadAllLines("userpass.txt");
-            client.Connect(clientId, lines[0], lines[1]);
-
-            //SendEmail();
-
-            // subscribe to the topic "/home/temperature" with QoS 2 
-            client.Subscribe(new string[] { "iot/up" }, new byte[] { MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE });
-            
             while (true)
             {
                 string line = Console.ReadLine();
                 if (line == "open")
                 {
-                    SendEmail("Instructed to manually close the Garage Door", GetLocalTime());
+                    SendEmail("Instructed to manually open the Garage Door", GetLocalTime());
                     moveGarageDoor(true);
                 }
                 else if (line == "close")
                 {
-                    SendEmail("Instructed to manually open the Garage Door", GetLocalTime());
+                    SendEmail("Instructed to manually close the Garage Door", GetLocalTime());
                     moveGarageDoor(false);
                 }
             }
+        }
+
+        private static void Client_ConnectionClosed(object sender, EventArgs e)
+        {
+            Console.WriteLine(GetLocalTime().ToString() + " Lost MQTT connection. Trying to reconnect...");
+
+            while (!ConnectToMQTT())
+            {
+                Thread.Sleep(1000);
+            }
+
+            Console.WriteLine(GetLocalTime().ToString() + " Apparently reconnected!");
         }
 
         static void moveGarageDoor(bool isOpen)
@@ -64,7 +99,7 @@ namespace MQTTClient
         }
 
         static bool isDoorOpen = false;
-        static System.Timers.Timer closeTimer = new Timer();
+        static System.Timers.Timer closeTimer = new System.Timers.Timer();
 
         static void StopCheckingIfItClosed()
         {
@@ -95,6 +130,7 @@ namespace MQTTClient
             if (!DateTime.TryParse(from, out utc))
             {
                 Console.WriteLine("Couldn't parse time: " + from);
+                utc = DateTime.UtcNow;
             }
 
             return GetLocalTime(utc);
@@ -115,12 +151,14 @@ namespace MQTTClient
             string msg = UTF8Encoding.UTF8.GetString(e.Message);
             Console.WriteLine(GetLocalTime().ToString() + ": " + msg);
 
-            if (msg.Contains("6	BARRIER	OPERATOR	0"))
+            if (msg.Contains("6	BARRIER OPERATOR	0"))
             {
                 string[] split = msg.Split('	');
                 bool isNowOpen = false;
                 if (bool.TryParse(split.Last(), out isNowOpen))
                 {
+                    Console.WriteLine("Door is now " + (isNowOpen ? "opened" : "closed"));
+
                     if (isDoorOpen != isNowOpen)
                     {
                         if (isNowOpen)
@@ -164,6 +202,7 @@ namespace MQTTClient
                 System.Net.NetworkCredential credentials = new System.Net.NetworkCredential(smtpUser, smtpPass);
                 smtpClient.Credentials = credentials;
 
+                Console.WriteLine("Sending email: " + message);
                 smtpClient.Send(mailMsg);
             }
             catch (Exception ex)
