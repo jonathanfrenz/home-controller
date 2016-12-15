@@ -75,7 +75,7 @@ namespace MQTTClient
             closeTimer = new System.Timers.Timer();
             closeTimer.Elapsed += new ElapsedEventHandler(OnTimedEvent);
             closeTimer.Interval = 1000 * 60 * 5;
-            closeTimer.AutoReset = false;
+            closeTimer.AutoReset = true;
             closeTimer.Enabled = true;
         }
 
