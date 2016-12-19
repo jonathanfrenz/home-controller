@@ -136,7 +136,7 @@ namespace MQTTClient
                 mailMsg.To.Add(new MailAddress("jonathanfrenz@gmail.com", "Jonathan Frenz"));
 
                 // From
-                mailMsg.From = new MailAddress("jonathanfrenz@gmail.com", "Elliot Castle");
+                mailMsg.From = new MailAddress("theelliotcastle@gmail.com", "Elliot Castle");
 
                 // Subject and multipart/alternative Body
                 mailMsg.Subject = message;
