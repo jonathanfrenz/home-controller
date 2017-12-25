@@ -24,6 +24,7 @@ namespace MQTTClient
             Log("* New session started!! *");
             Log("*");
 
+            SetupWebServer();
             TryUntilConnectToMQTT();
 
             while (true)
@@ -44,10 +45,18 @@ namespace MQTTClient
         
         static bool isDoorOpen = false;
         static System.Timers.Timer closeTimer = new System.Timers.Timer();
+        static System.Timers.Timer pingTimer = new System.Timers.Timer();
 
         static void DoorStatusUpdate(bool isNowOpen, DateTime when)
         {
             Log("Door is now " + (isNowOpen ? "opened" : "closed"));
+
+            if (isOffline)
+            {
+                SendEmail("Door is online");
+            }
+            isOffline = false;
+            KeepCheckingThatItsAlive();
 
             if (isDoorOpen != isNowOpen)
             {
@@ -60,6 +69,26 @@ namespace MQTTClient
 
                 isDoorOpen = isNowOpen;
             }
+        }
+
+        static void KeepCheckingThatItsAlive()
+        {
+            if (pingTimer.Enabled)
+                pingTimer.Enabled = false;
+
+            pingTimer = new System.Timers.Timer();
+            pingTimer.Elapsed += new ElapsedEventHandler(SendOfflineNotice);
+            pingTimer.Interval = 1000 * 60 * 25;
+            pingTimer.AutoReset = false;
+            pingTimer.Enabled = true;
+        }
+
+        static bool isOffline = true;
+
+        private static void SendOfflineNotice(object sender, ElapsedEventArgs e)
+        {
+            SendEmail("Door is offline");
+            isOffline = true;
         }
 
         static void StopCheckingIfItClosed()
